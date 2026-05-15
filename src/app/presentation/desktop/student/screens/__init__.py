@@ -1,0 +1,1 @@
+"""Student desktop screens."""
