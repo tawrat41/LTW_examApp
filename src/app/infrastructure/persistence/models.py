@@ -235,6 +235,11 @@ class Question(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         GUID(),
         ForeignKey("categories.id", ondelete="SET NULL"),
     )
+    attempt_id: Mapped[uuid.UUID | None] = mapped_column(
+        GUID(),
+        ForeignKey("attempts.id", ondelete="CASCADE"),
+        nullable=True,
+    )
     external_ref: Mapped[str] = mapped_column(String(100), nullable=False)
     stem_text: Mapped[str] = mapped_column(Text, nullable=False)
     explanation_text: Mapped[str | None] = mapped_column(Text)
@@ -245,6 +250,7 @@ class Question(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     exam: Mapped[Exam] = relationship(back_populates="questions")
     section: Mapped[Section] = relationship(back_populates="questions")
     category: Mapped[Category | None] = relationship(back_populates="questions")
+    attempt: Mapped[Attempt | None] = relationship(back_populates="questions")
     options: Mapped[list[QuestionOption]] = relationship(
         back_populates="question",
         cascade="all, delete-orphan",
@@ -256,6 +262,7 @@ class Question(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     tag_links: Mapped[list[QuestionTagLink]] = relationship(
         back_populates="question",
         cascade="all, delete-orphan",
+        overlaps="tags",
     )
     answers: Mapped[list[Answer]] = relationship(back_populates="question")
 
@@ -295,10 +302,12 @@ class QuestionTag(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     questions: Mapped[list[Question]] = relationship(
         secondary="question_tag_links",
         back_populates="tags",
+        overlaps="tag_links",
     )
     question_links: Mapped[list[QuestionTagLink]] = relationship(
         back_populates="tag",
         cascade="all, delete-orphan",
+        overlaps="questions,tags",
     )
 
 
@@ -320,8 +329,8 @@ class QuestionTagLink(Base):
         primary_key=True,
     )
 
-    question: Mapped[Question] = relationship(back_populates="tag_links")
-    tag: Mapped[QuestionTag] = relationship(back_populates="question_links")
+    question: Mapped[Question] = relationship(back_populates="tag_links", overlaps="questions,tags")
+    tag: Mapped[QuestionTag] = relationship(back_populates="question_links", overlaps="questions,tags")
 
 
 class Attempt(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -364,6 +373,10 @@ class Attempt(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     student: Mapped[Student] = relationship(back_populates="attempts")
     exam: Mapped[Exam] = relationship(back_populates="attempts")
     answers: Mapped[list[Answer]] = relationship(
+        back_populates="attempt",
+        cascade="all, delete-orphan",
+    )
+    questions: Mapped[list[Question]] = relationship(
         back_populates="attempt",
         cascade="all, delete-orphan",
     )

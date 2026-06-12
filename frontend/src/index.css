@@ -1,0 +1,112 @@
+/* Design System Variables & Tokens */
+:root {
+  --font-display: 'Outfit', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+
+  /* Premium Harmonious Color Palette (Dark Theme Base) */
+  --bg-dark: hsl(230, 25%, 8%);
+  --bg-card: hsla(230, 25%, 12%, 0.75);
+  --bg-card-hover: hsla(230, 25%, 16%, 0.85);
+  
+  --primary: hsl(265, 85%, 65%);
+  --primary-glow: hsla(265, 85%, 65%, 0.45);
+  --primary-hover: hsl(265, 85%, 72%);
+  
+  --secondary: hsl(190, 90%, 50%);
+  --secondary-glow: hsla(190, 90%, 50%, 0.35);
+
+  --accent: hsl(295, 90%, 60%);
+
+  --text-primary: hsl(0, 0%, 96%);
+  --text-secondary: hsl(230, 15%, 75%);
+  --text-muted: hsl(230, 12%, 55%);
+
+  --border: hsla(230, 20%, 25%, 0.4);
+  --border-glow: hsla(265, 85%, 65%, 0.25);
+
+  --success: hsl(145, 80%, 45%);
+  --success-glow: hsla(145, 80%, 45%, 0.25);
+  --warning: hsl(38, 95%, 55%);
+  --warning-glow: hsla(38, 95%, 55%, 0.25);
+  --danger: hsl(355, 85%, 55%);
+  --danger-glow: hsla(355, 85%, 55%, 0.25);
+
+  --shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5);
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 20px;
+  --radius-xl: 32px;
+
+  --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Global Reset */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background-color: var(--bg-dark);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  min-height: 100vh;
+  overflow-x: hidden;
+  line-height: 1.6;
+}
+
+/* Scrollbar Customization */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg-dark);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: var(--radius-sm);
+  transition: var(--transition);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--primary);
+}
+
+/* Base Typography Styling */
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+  line-height: 1.25;
+}
+
+button, input, select, textarea {
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+}
+
+/* Loading Strip / Progress Animations */
+@keyframes loading-slide {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+@keyframes pulse-slow {
+  0%, 100% { opacity: 0.8; }
+  50% { opacity: 0.4; }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+
+@keyframes border-pulse {
+  0%, 100% { border-color: var(--border); }
+  50% { border-color: var(--primary); }
+}

@@ -25,6 +25,7 @@ class CreateQuestionInput:
     marks: float = 1.0
     external_ref: str | None = None
     is_active: bool = True
+    attempt_id: str | None = None
 
 
 @dataclass(slots=True, frozen=True)

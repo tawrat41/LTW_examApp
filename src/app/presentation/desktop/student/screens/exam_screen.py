@@ -2,14 +2,17 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from PySide6.QtCore import QTimer, Qt, Signal
+from PySide6.QtCore import QEasingCurve, QPropertyAnimation, QTimer, Qt, Signal
 from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QButtonGroup,
     QFrame,
+    QGraphicsDropShadowEffect,
+    QGraphicsOpacityEffect,
     QHBoxLayout,
     QLabel,
     QMessageBox,
+    QPushButton,
     QRadioButton,
     QVBoxLayout,
     QWidget,
@@ -17,7 +20,7 @@ from PySide6.QtWidgets import (
 
 from app.application.adaptive import AdaptiveExamQuestionView
 from app.presentation.desktop.student.state import QuestionHistoryEntry, StudentExamSessionState
-from app.presentation.desktop.widgets.common import MessageBanner, PrimaryButton, SectionHeader, card_container
+from app.presentation.desktop.widgets.common import Badge, MessageBanner, PrimaryButton, SectionHeader, StatsWidget, card_container
 
 
 class StudentExamScreen(QWidget):
@@ -35,48 +38,103 @@ class StudentExamScreen(QWidget):
 
         layout = QVBoxLayout(self)
         layout.setSpacing(16)
-        self.header = SectionHeader("Exam", "Answer one question at a time.")
-        layout.addWidget(self.header)
+        
+        header_layout = QHBoxLayout()
+        self.header = SectionHeader("Exam", "Exam Title")
+        self.stats = StatsWidget()
+        header_layout.addWidget(self.header)
+        header_layout.addStretch(1)
+        header_layout.addWidget(self.stats)
+        layout.addLayout(header_layout)
+        
         self.banner = MessageBanner()
         layout.addWidget(self.banner)
 
-        top_card = card_container()
-        top_layout = QHBoxLayout(top_card)
+        info_bar = QHBoxLayout()
         self.progress_label = QLabel("Question 0 of 0")
+        self.progress_label.setStyleSheet("font-size: 16px; font-weight: 700; color: #4F46E5;")
         self.timer_label = QLabel("00:00")
-        self.timer_label.setStyleSheet("font-size: 22px; font-weight: 700; color: #d96c06;")
-        top_layout.addWidget(self.progress_label)
-        top_layout.addStretch(1)
-        top_layout.addWidget(self.timer_label)
-        layout.addWidget(top_card)
+        self.timer_label.setStyleSheet("font-size: 20px; font-weight: 800; color: #0F172A; background: #F1F5F9; padding: 5px 15px; border-radius: 8px;")
+        info_bar.addWidget(self.progress_label)
+        info_bar.addStretch(1)
+        info_bar.addWidget(self.timer_label)
+        layout.addLayout(info_bar)
 
         question_card = card_container()
+        question_card.setStyleSheet("background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 20px;")
+        
+        # Shadow effect for the main question card
+        question_shadow = QGraphicsDropShadowEffect(question_card)
+        question_shadow.setBlurRadius(30)
+        question_shadow.setXOffset(0)
+        question_shadow.setYOffset(10)
+        question_shadow.setColor(Qt.GlobalColor.black if hasattr(Qt, 'GlobalColor') else Qt.black)
+        question_shadow.color().setAlpha(10)
+        question_card.setGraphicsEffect(question_shadow)
+
         question_layout = QVBoxLayout(question_card)
-        self.meta_label = QLabel("")
-        self.meta_label.setProperty("role", "muted")
+        question_layout.setContentsMargins(40, 40, 40, 40)
+        question_layout.setSpacing(25)
+        
+        self.meta_layout = QHBoxLayout()
+        self.meta_layout.setSpacing(10)
+        self.category_badge = Badge("", color="#4F46E5", bg="#EEF2FF")
+        self.difficulty_badge = Badge("", color="#059669", bg="#ECFDF5")
+        # self.meta_layout.addWidget(self.category_badge)
+        # self.meta_layout.addWidget(self.difficulty_badge)
+        self.meta_layout.addStretch(1)
+        
         self.question_label = QLabel("")
         self.question_label.setWordWrap(True)
-        self.question_label.setStyleSheet("font-size: 22px; font-weight: 700;")
+        self.question_label.setStyleSheet("font-size: 26px; font-weight: 800; color: #0F172A; line-height: 140%;")
+        
         self.options_host = QFrame()
         self.options_layout = QVBoxLayout(self.options_host)
         self.options_layout.setContentsMargins(0, 0, 0, 0)
-        self.options_layout.setSpacing(10)
-        question_layout.addWidget(self.meta_label)
+        self.options_layout.setSpacing(12)
+        
+        question_layout.addLayout(self.meta_layout)
         question_layout.addWidget(self.question_label)
         question_layout.addWidget(self.options_host)
+        question_layout.addStretch(1)
         layout.addWidget(question_card, 1)
 
+        self._opacity_effect = QGraphicsOpacityEffect(question_card)
+        question_card.setGraphicsEffect(self._opacity_effect)
+        self._fade_anim = QPropertyAnimation(self._opacity_effect, b"opacity")
+        self._fade_anim.setDuration(400)
+        self._fade_anim.setStartValue(0.0)
+        self._fade_anim.setEndValue(1.0)
+        self._fade_anim.setEasingCurve(QEasingCurve.OutCubic)
+
         actions = QHBoxLayout()
-        self.previous_button = PrimaryButton("Previous")
-        self.previous_button.setProperty("variant", "")
-        self.next_button = PrimaryButton("Next")
-        self.submit_button = PrimaryButton("Submit Exam")
+        self.previous_button = QPushButton("←  Previous")
+        self.previous_button.setCursor(Qt.PointingHandCursor)
+        self.previous_button.setFixedHeight(46)
+        self.previous_button.setStyleSheet("padding: 0 25px;")
+        
+        self.skip_button = QPushButton("Skip Question")
+        self.skip_button.setCursor(Qt.PointingHandCursor)
+        self.skip_button.setFixedHeight(46)
+        self.skip_button.setStyleSheet("padding: 0 25px; color: #64748B;")
+        
+        self.next_button = PrimaryButton("Next Question  →")
+        self.next_button.setFixedWidth(200)
+        
+        self.submit_button = PrimaryButton("Finish & Submit")
+        self.submit_button.setProperty("variant", "destructive")
+        self.submit_button.setFixedWidth(180)
+        
         self.previous_button.clicked.connect(self._go_previous)
+        self.skip_button.clicked.connect(self._go_skip)
         self.next_button.clicked.connect(self._go_next)
         self.submit_button.clicked.connect(self._submit_exam)
+        
         actions.addWidget(self.previous_button)
-        actions.addWidget(self.next_button)
+        actions.addWidget(self.skip_button)
         actions.addStretch(1)
+        actions.addWidget(self.next_button)
+        actions.addSpacing(20)
         actions.addWidget(self.submit_button)
         layout.addLayout(actions)
 
@@ -117,27 +175,48 @@ class StudentExamScreen(QWidget):
         entry = self._current_entry()
         if self._state is None or entry is None:
             return
+        
+        # Trigger fade animation on change
+        self._fade_anim.stop()
+        self._opacity_effect.setOpacity(0)
+        self._fade_anim.start()
+
         question = entry.question
         self.header.set_text("Exam", self._state.exam.title)
         self.progress_label.setText(
             f"Question {min(self._state.current_index + 1, self._state.exam.question_count)} "
             f"of {self._state.exam.question_count}"
         )
-        self.meta_label.setText(
-            f"Category: {question.category_name or 'General'} | Difficulty: {question.difficulty_level}"
-        )
+        self.category_badge.setText(question.category_name or "General")
+        
+        if question.difficulty_level >= 3:
+            self.difficulty_badge.setText("HARD")
+            self.difficulty_badge.setStyleSheet("padding: 4px 10px; border-radius: 6px; background: #FEF2F2; color: #DC2626; font-size: 11px; font-weight: 700; text-transform: uppercase; border: 1px solid #DC262633;")
+        elif question.difficulty_level == 2:
+            self.difficulty_badge.setText("MEDIUM")
+            self.difficulty_badge.setStyleSheet("padding: 4px 10px; border-radius: 6px; background: #FFFBEB; color: #D97706; font-size: 11px; font-weight: 700; text-transform: uppercase; border: 1px solid #D9770633;")
+        else:
+            self.difficulty_badge.setText("EASY")
+            self.difficulty_badge.setStyleSheet("padding: 4px 10px; border-radius: 6px; background: #F0FDF4; color: #16A34A; font-size: 11px; font-weight: 700; text-transform: uppercase; border: 1px solid #16A34A33;")
+
         self.question_label.setText(question.stem_text)
         self._rebuild_options(question, entry)
-        self.previous_button.setEnabled(
-            self._state.exam.allow_previous and self._state.current_index > 0
-        )
+        
+        # Stats update
+        answered = sum(1 for e in self._state.history if e.submitted or e.selected_option_id is not None)
+        self.stats.update_stats(answered, self._state.exam.question_count)
+
+        self.previous_button.setEnabled(self._state.current_index > 0)
         is_latest = self._state.current_index == self._state.latest_index
+        
         if is_latest and not entry.submitted:
-            self.next_button.setText("Next")
-            self.next_button.setEnabled(entry.selected_option_id is not None)
+            self.next_button.setText("Submit Answer  →")
+            self.skip_button.show()
         else:
-            self.next_button.setText("Continue")
-            self.next_button.setEnabled(self._state.current_index < self._state.latest_index)
+            self.next_button.setText("Continue  →")
+            self.skip_button.hide()
+            
+        self.next_button.setEnabled(not is_latest or entry.selected_option_id is not None)
 
     def _rebuild_options(self, question: AdaptiveExamQuestionView, entry: QuestionHistoryEntry) -> None:
         while self.options_layout.count():
@@ -150,12 +229,48 @@ class StudentExamScreen(QWidget):
         self._option_group.setExclusive(True)
         self._option_group.buttonToggled.connect(self._on_option_toggled)
         for option in question.options:
-            button = QRadioButton(f"{option['key']}. {option['text']}")
+            button = QRadioButton(f" {option['key']}. {option['text']}")
             button.setProperty("option_id", option["option_id"])
             button.setEnabled(not entry.submitted and self._state.current_index == self._state.latest_index)
+            button.setCursor(Qt.PointingHandCursor)
             if entry.selected_option_id == option["option_id"]:
                 button.setChecked(True)
-            button.setStyleSheet("padding: 10px 8px; font-size: 15px;")
+            
+            # Modern radio button styling with indicator
+            button.setStyleSheet("""
+                QRadioButton {
+                    padding: 18px 24px;
+                    padding-left: 50px;
+                    font-size: 17px;
+                    font-weight: 500;
+                    border: 2px solid #E2E8F0;
+                    border-radius: 12px;
+                    background: #FFFFFF;
+                }
+                QRadioButton:hover {
+                    background: #F8FAFC;
+                    border-color: #CBD5E1;
+                }
+                QRadioButton:checked {
+                    background: #EEF2FF;
+                    border-color: #4F46E5;
+                    color: #4338CA;
+                    font-weight: 700;
+                }
+                QRadioButton::indicator {
+                    width: 22px;
+                    height: 22px;
+                    border: 2px solid #CBD5E1;
+                    border-radius: 11px;
+                    background: #FFFFFF;
+                    position: absolute;
+                    left: 20px;
+                }
+                QRadioButton::indicator:checked {
+                    border: 6px solid #4F46E5;
+                    background: #FFFFFF;
+                }
+            """)
             self.options_layout.addWidget(button)
             self._option_group.addButton(button)
             self._option_buttons.append(button)
@@ -170,14 +285,17 @@ class StudentExamScreen(QWidget):
         self._render()
 
     def _go_previous(self) -> None:
-        if self._state is None or not self._state.exam.allow_previous:
+        if self._state is None:
             return
         if self._state.current_index <= 0:
             return
         self._state.current_index -= 1
         self._render()
 
-    def _go_next(self) -> None:
+    def _go_skip(self) -> None:
+        self._go_next(force_skip=True)
+
+    def _go_next(self, force_skip: bool = False) -> None:
         self.banner.clear_message()
         if self._state is None:
             return
@@ -190,8 +308,8 @@ class StudentExamScreen(QWidget):
                 self._state.current_index += 1
                 self._render()
             return
-        if entry.selected_option_id is None:
-            self.banner.show_error("Select an option before continuing.")
+        if entry.selected_option_id is None and not force_skip:
+            self.banner.show_error("Select an option or use 'Skip' to continue.")
             return
         progress = self._app_context.exam_portal.submit_answer(
             attempt_id=self._state.attempt_id,

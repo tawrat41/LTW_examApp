@@ -1,0 +1,35 @@
+# Environments & Virtual Envs
+venv/
+.venv/
+env/
+.env
+examApp/
+
+# Python caches & build artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+.coverage
+htmlcov/
+dist/
+build/
+*.egg-info/
+.mypy_cache/
+
+# Local databases & user data
+data/*.db
+data/*.db-journal
+data/*.sqlite
+
+# Temporary & system files
+.DS_Store
+Thumbs.db
+.codex-temp/
+.pip-temp/
+
+# Node.js dependencies & builds
+node_modules/
+frontend/node_modules/
+frontend/dist/

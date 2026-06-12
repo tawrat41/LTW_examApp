@@ -94,14 +94,17 @@ class DocxQuestionBankParser:
                 continue
 
             chapter_match = CHAPTER_PATTERN.match(line)
-            if chapter_match and not line.startswith("1 ") and not line.startswith("2 "):
-                current_category = chapter_match.group(1).strip()
-                current_instruction = None
-                continue
-            if chapter_match and len(line.split()) <= 8:
-                current_category = chapter_match.group(1).strip()
-                current_instruction = None
-                continue
+            is_likely_question = ("/" in line or "__________" in line) and len(line.split()) > 2
+            
+            if chapter_match and not is_likely_question:
+                if not line.startswith("1 ") and not line.startswith("2 "):
+                    current_category = chapter_match.group(1).strip()
+                    current_instruction = None
+                    continue
+                if len(line.split()) <= 4:  # Reduced from 8 to be more conservative
+                    current_category = chapter_match.group(1).strip()
+                    current_instruction = None
+                    continue
 
             if re.match(r"^[A-Z]\s+", line):
                 current_instruction = line

@@ -61,7 +61,7 @@ class ReportingRepository:
             unanswered_questions=unanswered_questions,
             score=score,
             percentage=percentage,
-            status=attempt.status.value,
+            status="passed" if percentage >= 33.0 else "failed" if attempt.status.value == "completed" else attempt.status.value,
         )
 
     def _to_exam_summary(self, exam: Exam) -> ExamSummaryView:

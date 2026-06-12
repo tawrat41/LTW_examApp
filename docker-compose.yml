@@ -1,0 +1,16 @@
+version: '3.8'
+
+services:
+  adaptive-exam-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: adaptive_exam_app
+    ports:
+      - "8000:8000"
+    volumes:
+      - exam-data:/app/data
+    restart: unless-stopped
+
+volumes:
+  exam-data:

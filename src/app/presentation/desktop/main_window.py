@@ -61,11 +61,16 @@ class AdminMainWindow(QMainWindow):
         sidebar_layout.setContentsMargins(18, 18, 18, 18)
         brand = QLabel("Admin Console")
         brand.setObjectName("appTitle")
-        brand.setStyleSheet("font-size: 20px;")
+        brand.setStyleSheet("font-size: 20px; color: #F1F5F9; font-weight: 800; background: transparent; border: none;")
         self.user_label = QLabel("")
-        self.user_label.setStyleSheet("color: #d9e2ec;")
+        self.user_label.setStyleSheet("color: #94A3B8; background: transparent; border: none;")
+        
+        v_label = QLabel("v1.0.6 - UI PREMIUM")
+        v_label.setStyleSheet("color: #475569; font-size: 10px; font-weight: 700; background: transparent; border: none;")
+        
         sidebar_layout.addWidget(brand)
         sidebar_layout.addWidget(self.user_label)
+        sidebar_layout.addWidget(v_label)
 
         self.nav = NavigationRail(
             [

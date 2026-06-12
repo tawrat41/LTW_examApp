@@ -5,6 +5,7 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QDialog,
     QHBoxLayout,
+    QHeaderView,
     QMessageBox,
     QPushButton,
     QLineEdit,
@@ -16,7 +17,7 @@ from PySide6.QtWidgets import (
 
 from app.application.students import StudentManagementError, StudentSearchFilters
 from app.presentation.desktop.dialogs.student_editor_dialog import StudentEditorDialog
-from app.presentation.desktop.widgets.common import MessageBanner, PrimaryButton, SectionHeader, card_container
+from app.presentation.desktop.widgets.common import Badge, MessageBanner, PrimaryButton, SectionHeader, card_container
 
 
 class StudentManagementScreen(QWidget):
@@ -30,37 +31,48 @@ class StudentManagementScreen(QWidget):
         self.banner = MessageBanner()
         layout.addWidget(self.banner)
 
-        filters_card = card_container()
-        filters_layout = QHBoxLayout(filters_card)
-        self.search_edit = QLineEdit()
-        self.search_edit.setPlaceholderText("Search by student ID, name, or email")
-        self.active_only_check = QCheckBox("Active only")
-        self.active_only_check.setChecked(True)
-        search_button = QPushButton("Search")
-        search_button.clicked.connect(self.refresh)
-        filters_layout.addWidget(self.search_edit, 1)
-        filters_layout.addWidget(self.active_only_check)
-        filters_layout.addWidget(search_button)
-        layout.addWidget(filters_card)
-
+        # Actions Row
         actions = QHBoxLayout()
         add_button = PrimaryButton("Add Student")
-        edit_button = QPushButton("Edit Selected")
-        delete_button = QPushButton("Delete Selected")
+        self.edit_button = QPushButton("Edit Profile")
+        self.delete_button = QPushButton("Delete Account")
         add_button.clicked.connect(self._add_student)
-        edit_button.clicked.connect(self._edit_student)
-        delete_button.clicked.connect(self._delete_student)
+        self.edit_button.clicked.connect(self._edit_student)
+        self.delete_button.clicked.connect(self._delete_student)
         actions.addWidget(add_button)
-        actions.addWidget(edit_button)
-        actions.addWidget(delete_button)
+        actions.addWidget(self.edit_button)
+        actions.addWidget(self.delete_button)
         actions.addStretch(1)
+        
+        # Search Bar
+        search_card = card_container()
+        search_layout = QHBoxLayout(search_card)
+        search_layout.setContentsMargins(15, 10, 15, 10)
+        self.search_edit = QLineEdit()
+        self.search_edit.setPlaceholderText("Search by student ID, name, or email...")
+        self.active_only_check = QCheckBox("Active Students Only")
+        self.active_only_check.setChecked(True)
+        search_btn = PrimaryButton("Search")
+        search_btn.setFixedWidth(120)
+        search_btn.clicked.connect(self.refresh)
+        search_layout.addWidget(self.search_edit, 1)
+        search_layout.addWidget(self.active_only_check)
+        search_layout.addWidget(search_btn)
+        
         layout.addLayout(actions)
+        layout.addWidget(search_card)
 
         self.table = QTableWidget(0, 5)
-        self.table.setHorizontalHeaderLabels(["Student ID", "Name", "Email", "Phone", "Active"])
-        self.table.horizontalHeader().setStretchLastSection(True)
+        self.table.setHorizontalHeaderLabels(["ID", "FULL NAME", "EMAIL ADDRESS", "PHONE", "STATUS"])
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SingleSelection)
+        self.table.verticalHeader().setVisible(False)
+        self.table.setShowGrid(False)
+        
+        h = self.table.horizontalHeader()
+        h.setSectionResizeMode(1, QHeaderView.Stretch)
+        h.setSectionResizeMode(2, QHeaderView.Stretch)
+        
         layout.addWidget(self.table, 1)
 
     def refresh(self) -> None:
@@ -77,7 +89,19 @@ class StudentManagementScreen(QWidget):
             self.table.setItem(row, 1, QTableWidgetItem(student.full_name))
             self.table.setItem(row, 2, QTableWidgetItem(student.email or ""))
             self.table.setItem(row, 3, QTableWidgetItem(student.phone or ""))
-            self.table.setItem(row, 4, QTableWidgetItem("Yes" if student.is_active else "No"))
+            self.table.setItem(row, 3, QTableWidgetItem(student.phone or ""))
+            
+            # Status Badge
+            status_widget = QWidget()
+            status_layout = QHBoxLayout(status_widget)
+            status_layout.setContentsMargins(10, 5, 10, 5)
+            if student.is_active:
+                badge = Badge("ACTIVE", color="#16A34A", bg="#DCFCE7")
+            else:
+                badge = Badge("INACTIVE", color="#DC2626", bg="#FEF2F2")
+            status_layout.addWidget(badge)
+            status_layout.addStretch(1)
+            self.table.setCellWidget(row, 4, status_widget)
 
     def _selected_student(self):
         row = self.table.currentRow()

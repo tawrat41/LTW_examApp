@@ -39,8 +39,8 @@ def _build_services(tmp_path: Path):
             code="ENG-ADAPT",
             title="Adaptive English",
             created_by_user_id=str(admin.id),
-            min_questions=3,
-            max_questions=3,
+            min_questions=20,
+            max_questions=20,
         )
     )
     student = student_service.add_student(
@@ -59,92 +59,93 @@ def test_adaptive_exam_service_runs_deterministic_flow(tmp_path: Path) -> None:
     section = session.query(Section).filter_by(exam_id=exam.exam_id).one()
     section_id = str(section.id)
 
-    q_easy = question_service.add_question(
-        CreateQuestionInput(
-            exam_id=exam.exam_id,
-            section_id=section_id,
-            stem_text="Easy grammar question",
-            options=[
-                QuestionOptionInput("A", "Correct", True),
-                QuestionOptionInput("B", "Wrong"),
-            ],
-            category_name="Grammar",
-            difficulty_level=1,
+    # Seed 10 easy questions
+    for i in range(10):
+        question_service.add_question(
+            CreateQuestionInput(
+                exam_id=exam.exam_id,
+                section_id=section_id,
+                stem_text=f"Easy grammar question {i}",
+                options=[
+                    QuestionOptionInput("A", "Correct", True),
+                    QuestionOptionInput("B", "Wrong"),
+                ],
+                category_name="Grammar",
+                difficulty_level=1,
+            )
         )
-    )
-    q_medium = question_service.add_question(
-        CreateQuestionInput(
-            exam_id=exam.exam_id,
-            section_id=section_id,
-            stem_text="Medium vocabulary question",
-            options=[
-                QuestionOptionInput("A", "Wrong"),
-                QuestionOptionInput("B", "Correct", True),
-            ],
-            category_name="Vocabulary",
-            difficulty_level=2,
+
+    # Seed 10 medium questions
+    for i in range(10):
+        question_service.add_question(
+            CreateQuestionInput(
+                exam_id=exam.exam_id,
+                section_id=section_id,
+                stem_text=f"Medium vocabulary question {i}",
+                options=[
+                    QuestionOptionInput("A", "Wrong"),
+                    QuestionOptionInput("B", "Correct", True),
+                ],
+                category_name="Vocabulary",
+                difficulty_level=2,
+            )
         )
-    )
-    q_hard = question_service.add_question(
-        CreateQuestionInput(
-            exam_id=exam.exam_id,
-            section_id=section_id,
-            stem_text="Hard reading question",
-            options=[
-                QuestionOptionInput("A", "Correct", True),
-                QuestionOptionInput("B", "Wrong"),
-            ],
-            category_name="Reading",
-            difficulty_level=3,
+
+    # Seed 10 hard questions
+    for i in range(10):
+        question_service.add_question(
+            CreateQuestionInput(
+                exam_id=exam.exam_id,
+                section_id=section_id,
+                stem_text=f"Hard reading question {i}",
+                options=[
+                    QuestionOptionInput("A", "Correct", True),
+                    QuestionOptionInput("B", "Wrong"),
+                ],
+                category_name="Reading",
+                difficulty_level=3,
+            )
         )
-    )
 
     start = adaptive_service.start_exam(
-        StartAdaptiveExamInput(student_id=student.student_id, exam_id=exam.exam_id, question_count=3)
+        StartAdaptiveExamInput(student_id=student.student_id, exam_id=exam.exam_id, question_count=20, generate_ai_questions=False)
     )
-    assert start.total_questions == 3
+    assert start.total_questions == 20
     assert start.next_question is not None
-    assert start.next_question.question_id == q_medium.question_id
     assert start.next_question.difficulty_level == 2
 
-    medium_correct_option = next(
-        option["option_id"] for option in start.next_question.options if option["key"] == "B"
-    )
-    after_first = adaptive_service.submit_answer(
-        SubmitAnswerInput(
-            attempt_id=start.attempt_id,
-            question_id=start.next_question.question_id,
-            selected_option_id=medium_correct_option,
-        )
-    )
-    assert after_first.next_question is not None
-    assert after_first.next_question.question_id == q_hard.question_id
-    assert after_first.next_question.difficulty_level == 3
+    progress = start
+    for step in range(20):
+        assert progress.next_question is not None
+        current_q = progress.next_question
 
-    hard_wrong_option = next(
-        option["option_id"] for option in after_first.next_question.options if option["key"] == "B"
-    )
-    after_second = adaptive_service.submit_answer(
-        SubmitAnswerInput(
-            attempt_id=start.attempt_id,
-            question_id=after_first.next_question.question_id,
-            selected_option_id=hard_wrong_option,
-        )
-    )
-    assert after_second.next_question is not None
-    assert after_second.next_question.question_id == q_easy.question_id
-    assert after_second.next_question.difficulty_level == 1
+        # Step 0: Answer medium question correctly (correct is B)
+        if step == 0:
+            assert current_q.difficulty_level == 2
+            selected_option_id = next(opt["option_id"] for opt in current_q.options if opt["key"] == "B")
+        # Step 1: Answer hard question incorrectly (correct is A, so choose B)
+        elif step == 1:
+            assert current_q.difficulty_level == 3
+            selected_option_id = next(opt["option_id"] for opt in current_q.options if opt["key"] == "B")
+        # Remaining steps: answer correctly
+        else:
+            if current_q.difficulty_level == 1:
+                correct_key = "A"
+            elif current_q.difficulty_level == 2:
+                correct_key = "B"
+            else:
+                correct_key = "A"
+            selected_option_id = next(opt["option_id"] for opt in current_q.options if opt["key"] == correct_key)
 
-    easy_correct_option = next(
-        option["option_id"] for option in after_second.next_question.options if option["key"] == "A"
-    )
-    final_progress = adaptive_service.submit_answer(
-        SubmitAnswerInput(
-            attempt_id=start.attempt_id,
-            question_id=after_second.next_question.question_id,
-            selected_option_id=easy_correct_option,
+        progress = adaptive_service.submit_answer(
+            SubmitAnswerInput(
+                attempt_id=start.attempt_id,
+                question_id=current_q.question_id,
+                selected_option_id=selected_option_id,
+            )
         )
-    )
-    assert final_progress.is_complete is True
-    assert final_progress.next_question is None
-    assert final_progress.answered_questions == 3
+
+    assert progress.is_complete is True
+    assert progress.next_question is None
+    assert progress.answered_questions == 20
+

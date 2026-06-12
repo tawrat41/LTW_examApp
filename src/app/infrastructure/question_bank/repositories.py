@@ -25,6 +25,7 @@ class QuestionBankRepository:
             exam_id=exam_id,
             section_id=section.id,
             category_id=category.id if category else None,
+            attempt_id=uuid.UUID(data.attempt_id) if data.attempt_id else None,
             external_ref=data.external_ref or f"manual-{uuid.uuid4().hex}",
             stem_text=data.stem_text.strip(),
             explanation_text=data.explanation_text.strip() if data.explanation_text else None,
@@ -69,6 +70,7 @@ class QuestionBankRepository:
             question.tags = self._get_or_create_tags(data.tags)
         if data.options is not None:
             question.options.clear()
+            self._session.flush()
             question.options.extend(
                 QuestionOption(
                     option_key=option.key.strip().upper(),

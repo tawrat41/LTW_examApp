@@ -23,18 +23,20 @@ class ExamManagementService:
         return self._to_view(exam)
 
     def edit_exam(self, exam_id: str, data: UpdateExamInput) -> ExamView:
+        exam = self._repository.get_exam(exam_id)
+        if exam is None:
+            raise ExamManagementError("Exam not found.")
         if (
             data.time_limit_minutes is not None
             or data.min_questions is not None
             or data.max_questions is not None
             or data.passing_score is not None
         ):
-            self._validate_range(
-                data.time_limit_minutes or 1,
-                data.min_questions or 1,
-                data.max_questions or max(data.min_questions or 1, 1),
-                data.passing_score if data.passing_score is not None else 0.0,
-            )
+            time_limit = data.time_limit_minutes if data.time_limit_minutes is not None else exam.settings.time_limit_minutes
+            min_q = data.min_questions if data.min_questions is not None else exam.settings.min_questions
+            max_q = data.max_questions if data.max_questions is not None else exam.settings.max_questions
+            passing = data.passing_score if data.passing_score is not None else exam.settings.passing_score
+            self._validate_range(time_limit, min_q, max_q, passing)
         try:
             exam = self._repository.update_exam(exam_id, data)
         except ValueError as exc:
@@ -51,7 +53,9 @@ class ExamManagementService:
     def _validate_range(self, time_limit_minutes: int, min_questions: int, max_questions: int, passing_score: float) -> None:
         if time_limit_minutes <= 0:
             raise ExamManagementError("Time limit must be greater than 0.")
-        if min_questions <= 0 or max_questions <= 0 or max_questions < min_questions:
+        if min_questions < 20:
+            raise ExamManagementError("Minimum questions must be at least 20.")
+        if max_questions <= 0 or max_questions < min_questions:
             raise ExamManagementError("Question range is invalid.")
         if passing_score < 0:
             raise ExamManagementError("Passing score must be non-negative.")

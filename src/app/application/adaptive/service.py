@@ -32,6 +32,29 @@ class AdaptiveExamService:
             exam_id=data.exam_id,
             requested_question_count=data.question_count,
         )
+        if data.generate_ai_questions:
+            from sqlalchemy import select
+            from app.infrastructure.persistence.models import Exam, Section
+            
+            exam = self._repository._session.scalar(
+                select(Exam).where(Exam.id == attempt.exam_id)
+            )
+            if exam:
+                section = self._repository._session.scalar(
+                    select(Section).where(Section.exam_id == exam.id).order_by(Section.display_order)
+                )
+                if section:
+                    level_name = exam.title.split(" ")[0]
+                    from app.application.importing.ai_generator import AIGeneratorService
+                    ai_generator = AIGeneratorService(self._repository._session)
+                    ai_generator.generate_questions(
+                        exam_id=str(exam.id),
+                        section_id=str(section.id),
+                        level_name=level_name,
+                        count=max(10, question_count * 2),
+                        attempt_id=str(attempt.id)
+                    )
+
         next_question = self._select_next_question(str(attempt.id), question_count)
         return self.get_progress(str(attempt.id), override_next_question=next_question, total_questions=question_count)
 

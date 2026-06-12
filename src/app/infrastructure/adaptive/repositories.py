@@ -53,9 +53,27 @@ class AdaptiveExamRepository:
         attempt = self.get_attempt(attempt_id)
         if attempt is None:
             raise ValueError("Attempt not found.")
+        
+        attempt_uuid = uuid.UUID(attempt_id)
+        stmt_attempt = (
+            select(Question)
+            .where(Question.attempt_id == attempt_uuid, Question.is_active.is_(True))
+            .options(
+                joinedload(Question.category),
+                joinedload(Question.options),
+            )
+        )
+        candidates = list(self._session.scalars(stmt_attempt).unique().all())
+        if candidates:
+            return candidates
+
         stmt = (
             select(Question)
-            .where(Question.exam_id == attempt.exam_id, Question.is_active.is_(True))
+            .where(
+                Question.exam_id == attempt.exam_id,
+                Question.attempt_id.is_(None),
+                Question.is_active.is_(True)
+            )
             .options(
                 joinedload(Question.category),
                 joinedload(Question.options),

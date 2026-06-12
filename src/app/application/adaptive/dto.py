@@ -8,6 +8,7 @@ class StartAdaptiveExamInput:
     student_id: str
     exam_id: str
     question_count: int | None = None
+    generate_ai_questions: bool = True
 
 
 @dataclass(slots=True, frozen=True)
