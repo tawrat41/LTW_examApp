@@ -7,6 +7,13 @@ from pathlib import Path
 from typing import Any, List, Optional, Dict
 from pydantic import BaseModel
 
+# Load environment variables from .env file as early as possible
+try:
+    from app.bootstrap.env import load_dotenv
+    load_dotenv()
+except Exception:
+    pass
+
 from fastapi import FastAPI, Depends, HTTPException, Header, UploadFile, File, Form, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware

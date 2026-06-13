@@ -311,6 +311,9 @@ class AIGeneratorService:
                 # Compute a deterministic hash of the stem for duplicate prevention
                 stem_hash = uuid.uuid5(uuid.NAMESPACE_DNS, q_data["stem_text"]).hex[:8]
                 
+                # Compute a unique external_ref for this attempt if attempt_id is provided
+                ref_suffix = f"-{attempt_id[:8]}" if attempt_id else ""
+                
                 # Insert manually using repository layer
                 create_input = CreateQuestionInput(
                     exam_id=exam_id,
@@ -321,7 +324,7 @@ class AIGeneratorService:
                     difficulty_level=q_data["difficulty_level"],
                     explanation_text=q_data["explanation_text"],
                     marks=1.0,
-                    external_ref=f"dynamic-ai-{level_name.lower()}-{stem_hash}",
+                    external_ref=f"dynamic-ai-{level_name.lower()}-{stem_hash}{ref_suffix}",
                     is_active=True,
                     attempt_id=attempt_id
                 )
@@ -434,6 +437,9 @@ class AIGeneratorService:
                     # Compute a deterministic hash of the stem for duplicate prevention
                     stem_hash = uuid.uuid5(uuid.NAMESPACE_DNS, q_data["stem_text"]).hex[:8]
                     
+                    # Compute a unique external_ref for this attempt if attempt_id is provided
+                    ref_suffix = f"-{attempt_id[:8]}" if attempt_id else ""
+                    
                     create_input = CreateQuestionInput(
                         exam_id=exam_id,
                         section_id=section_id,
@@ -443,7 +449,7 @@ class AIGeneratorService:
                         difficulty_level=int(q_data["difficulty_level"]),
                         explanation_text=q_data["explanation_text"],
                         marks=1.0,
-                        external_ref=f"openai-ai-{level_name.lower()}-{stem_hash}",
+                        external_ref=f"openai-ai-{level_name.lower()}-{stem_hash}{ref_suffix}",
                         is_active=True,
                         attempt_id=attempt_id
                     )
