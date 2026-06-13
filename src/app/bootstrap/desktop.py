@@ -14,13 +14,12 @@ from app.bootstrap.admin_services import (
     build_student_management_service,
 )
 from app.bootstrap.auth import build_authentication_controller
-from app.presentation.desktop.app_context import DesktopAppContext
-from app.presentation.desktop.main_window import launch_admin_window
 from app.infrastructure.persistence.session import create_all, create_session_factory, create_sqlite_engine
 from app.application.importing import QuestionBankImportService
 
 
 def build_desktop_app_context(database_path: str | Path) -> DesktopAppContext:
+    from app.presentation.desktop.app_context import DesktopAppContext
     engine = create_sqlite_engine(database_path)
     create_all(engine)
     session = create_session_factory(engine)()
@@ -37,6 +36,7 @@ def build_desktop_app_context(database_path: str | Path) -> DesktopAppContext:
 
 
 def run_admin_desktop(database_path: str | Path) -> int:
+    from app.presentation.desktop.main_window import launch_admin_window
     return launch_admin_window(build_desktop_app_context(database_path))
 
 
