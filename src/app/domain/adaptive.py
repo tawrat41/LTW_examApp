@@ -23,6 +23,8 @@ class AdaptiveAnswerRecord:
     difficulty_level: int
     category_name: str | None
     is_correct: bool
+    stem_text: str | None = None
+    external_ref: str | None = None
 
 
 @dataclass(slots=True, frozen=True)
@@ -61,7 +63,15 @@ class AdaptiveExamEngine:
             return None
 
         asked_ids = {item.question_id for item in state.asked_questions}
-        remaining_candidates = [item for item in candidates if item.question_id not in asked_ids]
+        asked_stems = {item.stem_text.strip().lower() for item in state.asked_questions if item.stem_text}
+        asked_refs = {item.external_ref for item in state.asked_questions if item.external_ref}
+
+        remaining_candidates = [
+            item for item in candidates
+            if item.question_id not in asked_ids
+            and (not item.stem_text or item.stem_text.strip().lower() not in asked_stems)
+            and (not item.external_ref or item.external_ref not in asked_refs)
+        ]
         if not remaining_candidates:
             return None
 

@@ -116,6 +116,8 @@ class AdaptiveExamService:
                     difficulty_level=answer.question.difficulty_level,
                     category_name=answer.question.category.name if answer.question.category else None,
                     is_correct=bool(answer.is_correct),
+                    stem_text=answer.question.stem_text,
+                    external_ref=answer.question.external_ref,
                 )
                 for answer in sorted(answer_models, key=lambda item: item.answered_at or item.created_at)
             ]
