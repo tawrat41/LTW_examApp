@@ -785,7 +785,8 @@ def start_student_exam(exam_id: str, body: StartExamBody, db: Session = Depends(
             "current_question": current_q,
             "student_id": str(student.id),
             "student_name": student.full_name,
-            "student_code": student.student_code
+            "student_code": student.student_code,
+            "generator_mode": "openai_api" if os.environ.get("OPENAI_API_KEY") else "offline_fallback"
         }
     except (StudentExamPortalError, AdaptiveExamError) as exc:
         raise HTTPException(status_code=400, detail=str(exc))
