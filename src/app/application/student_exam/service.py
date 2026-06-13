@@ -64,6 +64,7 @@ class StudentExamPortalService:
                 student_id=student_id,
                 exam_id=exam_id,
                 question_count=instructions.question_count,
+                generate_ai_questions=False,
             )
         )
         return StudentExamSessionView(

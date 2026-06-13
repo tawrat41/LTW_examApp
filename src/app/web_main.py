@@ -93,12 +93,12 @@ def seed_cefr_exams(session: Session) -> None:
         return
         
     levels = [
-        ("STARTER", "Starter (A1-)", "Basic introduction, alphabets, simple pronouns and matching tasks.", 20, 20, 0.0),
-        ("ELEMENTARY", "Elementary (A1)", "Simple present/past tense verbs, daily vocabulary, and sentence unscrambles.", 20, 20, 50.0),
-        ("PRE_INTERMEDIATE", "Pre-Intermediate (A2)", "Present perfect tense, comparatives, prepositions, and short reading passages.", 20, 20, 50.0),
-        ("INTERMEDIATE", "Intermediate (B1)", "Modals, passive voice, cloze exercises, and inferential reading tasks.", 20, 20, 60.0),
-        ("UPPER_INTERMEDIATE", "Upper-Intermediate (B2)", "Future perfect, phrasal verbs, idioms, and long detail passages.", 20, 20, 60.0),
-        ("ADVANCED", "Advanced (C1/C2)", "Inversion, nuances, tone recognition, and academic reading topics.", 20, 20, 70.0),
+        ("STARTER", "Starter (A1-)", "Basic introduction, alphabets, simple pronouns and matching tasks.", 30, 30, 40.0),
+        ("ELEMENTARY", "Elementary (A1)", "Simple present/past tense verbs, daily vocabulary, and sentence unscrambles.", 30, 30, 40.0),
+        ("PRE_INTERMEDIATE", "Pre-Intermediate (A2)", "Present perfect tense, comparatives, prepositions, and short reading passages.", 30, 30, 40.0),
+        ("INTERMEDIATE", "Intermediate (B1)", "Modals, passive voice, cloze exercises, and inferential reading tasks.", 30, 30, 40.0),
+        ("UPPER_INTERMEDIATE", "Upper-Intermediate (B2)", "Future perfect, phrasal verbs, idioms, and long detail passages.", 30, 30, 40.0),
+        ("ADVANCED", "Advanced (C1/C2)", "Inversion, nuances, tone recognition, and academic reading topics.", 30, 30, 40.0),
     ]
     
     ai_gen = AIGeneratorService(session)
@@ -106,16 +106,19 @@ def seed_cefr_exams(session: Session) -> None:
     for code, title, desc, min_q, max_q, pass_s in levels:
         existing = session.scalar(select(Exam).where(Exam.code == code))
         if existing:
-            # Sync min/max questions to 20
+            # Sync to new global standards: 30 items, 15 mins, 40% passing
+            existing.time_limit_minutes = 15
             if existing.settings:
-                existing.settings.min_questions = 20
-                existing.settings.max_questions = 20
-                session.commit()
-            # Seed default questions if database has less than 40 questions
+                existing.settings.min_questions = 30
+                existing.settings.max_questions = 30
+                existing.settings.time_limit_minutes = 15
+                existing.settings.passing_score = 40.0
+            session.commit()
+            # Seed default questions if database has less than 30 questions
             q_count = session.scalar(select(func.count(Question.id)).where(Question.exam_id == existing.id, Question.attempt_id.is_(None)))
-            if q_count < 40:
+            if q_count < 30:
                 section = existing.sections[0]
-                ai_gen.generate_questions(str(existing.id), str(section.id), title.split(" ")[0], count=40 - q_count)
+                ai_gen._generate_fallback(str(existing.id), str(section.id), title.split(" ")[0], count=30 - q_count)
             continue
             
         # Create new CEFR level exam
@@ -127,25 +130,30 @@ def seed_cefr_exams(session: Session) -> None:
             created_by_user_id=str(admin_user.id),
             description=desc,
             subject="English",
-            time_limit_minutes=20 if "Starter" in title or "Elementary" in title else 45,
-            min_questions=min_q,
-            max_questions=max_q,
-            passing_score=pass_s
+            time_limit_minutes=15,
+            min_questions=30,
+            max_questions=30,
+            passing_score=40.0
         ))
         
         # Activate exam
         created.status = "active"
         session.commit()
         
-        # Ingest 40 initial validated questions
+        # Ingest 30 initial validated questions
         section = created.sections[0]
-        ai_gen.generate_questions(str(created.id), str(section.id), title.split(" ")[0], count=40)
+        ai_gen._generate_fallback(str(created.id), str(section.id), title.split(" ")[0], count=30)
 
 
-# Run Seeding
-db_session = create_session_factory(engine)()
-seed_cefr_exams(db_session)
-db_session.close()
+
+# Run Seeding on App Startup
+@app.on_event("startup")
+def startup_seeding():
+    db_session = create_session_factory(engine)()
+    try:
+        seed_cefr_exams(db_session)
+    finally:
+        db_session.close()
 
 SessionLocal = create_session_factory(engine)
 shared_session_store = InMemorySessionStore(ttl_minutes=480)
@@ -352,7 +360,10 @@ def get_admin_dashboard(db: Session = Depends(get_db), admin=Depends(require_adm
 @app.get("/api/admin/exams/lookup")
 def get_exam_lookup(db: Session = Depends(get_db), admin=Depends(require_admin)):
     queries = build_admin_query_service(db)
-    return [{"id": item.id, "label": item.label} for item in queries.list_exam_options()]
+    return [
+        {"id": item.id, "label": item.label, "questions_count": item.questions_count}
+        for item in queries.list_exam_options()
+    ]
 
 @app.get("/api/admin/exams/{exam_id}/sections/lookup")
 def get_section_lookup(exam_id: str, db: Session = Depends(get_db), admin=Depends(require_admin)):
@@ -793,7 +804,13 @@ def start_student_exam(exam_id: str, body: StartExamBody, db: Session = Depends(
             "student_id": str(student.id),
             "student_name": student.full_name,
             "student_code": student.student_code,
-            "generator_mode": "openai_api" if os.environ.get("OPENAI_API_KEY") else "offline_fallback"
+            "generator_mode": (
+                "github_models" if os.environ.get("GITHUB_TOKEN") else
+                "groq_api" if os.environ.get("GROQ_API_KEY") else
+                "gemini_api" if os.environ.get("GEMINI_API_KEY") else
+                "openai_api" if os.environ.get("OPENAI_API_KEY") else
+                "offline_fallback"
+            )
         }
     except (StudentExamPortalError, AdaptiveExamError) as exc:
         raise HTTPException(status_code=400, detail=str(exc))

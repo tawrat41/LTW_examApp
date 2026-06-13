@@ -7,6 +7,7 @@ from dataclasses import dataclass
 class LookupItem:
     id: str
     label: str
+    questions_count: int | None = None
 
 
 @dataclass(slots=True, frozen=True)

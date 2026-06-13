@@ -254,7 +254,40 @@ class AIGeneratorService:
     def __init__(self, db_session: Session) -> None:
         self._db = db_session
         self._qb_service = build_question_bank_service(db_session)
-        self._api_key = os.environ.get("OPENAI_API_KEY", "")
+        self._provider, self._api_key, self._api_url, self._model = self._detect_provider()
+
+    def _detect_provider(self) -> tuple[str, str, str, str]:
+        # Determine API provider
+        import os
+        if os.environ.get("GITHUB_TOKEN"):
+            return (
+                "github_models",
+                os.environ["GITHUB_TOKEN"],
+                "https://models.inference.ai.azure.com/chat/completions",
+                os.environ.get("GITHUB_MODEL_NAME", "gpt-4o-mini")
+            )
+        elif os.environ.get("GROQ_API_KEY"):
+            return (
+                "groq_api",
+                os.environ["GROQ_API_KEY"],
+                "https://api.groq.com/openai/v1/chat/completions",
+                os.environ.get("GROQ_MODEL_NAME", "llama-3.1-8b-instant")
+            )
+        elif os.environ.get("GEMINI_API_KEY"):
+            return (
+                "gemini_api",
+                os.environ["GEMINI_API_KEY"],
+                "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+                os.environ.get("GEMINI_MODEL_NAME", "gemini-flash-latest")
+            )
+        elif os.environ.get("OPENAI_API_KEY"):
+            return (
+                "openai_api",
+                os.environ["OPENAI_API_KEY"],
+                "https://api.openai.com/v1/chat/completions",
+                os.environ.get("OPENAI_MODEL_NAME", "gpt-4o-mini")
+            )
+        return ("offline_fallback", "", "", "")
 
     def generate_questions(
         self,
@@ -269,15 +302,15 @@ class AIGeneratorService:
         Falls back to local static seed templates if no API key is set.
         """
         import sys
-        if not self._api_key:
-            print(f"[QUESTION GENERATOR] OPENAI_API_KEY is not set. Generating {count} questions using local dynamic templates for {level_name}.", file=sys.stderr, flush=True)
+        if self._provider == "offline_fallback":
+            print(f"[QUESTION GENERATOR] No API key configured. Generating {count} questions using local dynamic templates for {level_name}.", file=sys.stderr, flush=True)
             res = self._generate_fallback(exam_id, section_id, level_name, count, attempt_id)
             print(f"[QUESTION GENERATOR] Fallback generation complete. Successfully imported {res.get('imported_count', 0)} questions.", file=sys.stderr, flush=True)
             return res
         
-        print(f"[QUESTION GENERATOR] OPENAI_API_KEY is configured. Generating {count} questions using OpenAI (gpt-4o-mini) for {level_name}.", file=sys.stderr, flush=True)
-        res = self._generate_via_openai(exam_id, section_id, level_name, count, attempt_id)
-        print(f"[QUESTION GENERATOR] OpenAI generation complete. Successfully imported {res.get('imported_count', 0)} questions. Success status: {res.get('success', False)}.", file=sys.stderr, flush=True)
+        print(f"[QUESTION GENERATOR] {self._provider} is configured. Generating {count} questions using model '{self._model}' for {level_name}.", file=sys.stderr, flush=True)
+        res = self._generate_via_api(exam_id, section_id, level_name, count, attempt_id)
+        print(f"[QUESTION GENERATOR] {self._provider} generation complete. Successfully imported {res.get('imported_count', 0)} questions. Success status: {res.get('success', False)}.", file=sys.stderr, flush=True)
         return res
 
     def _generate_fallback(
@@ -313,6 +346,18 @@ class AIGeneratorService:
                 
                 # Compute a unique external_ref for this attempt if attempt_id is provided
                 ref_suffix = f"-{attempt_id[:8]}" if attempt_id else ""
+                ext_ref = f"dynamic-ai-{level_name.lower()}-{stem_hash}{ref_suffix}"
+                
+                # Prevent IntegrityError by skipping existing questions in the base pool
+                from sqlalchemy import select
+                existing_q = self._db.scalar(
+                    select(Question).where(
+                        Question.exam_id == uuid.UUID(exam_id),
+                        Question.external_ref == ext_ref
+                    )
+                )
+                if existing_q is not None:
+                    continue
                 
                 # Insert manually using repository layer
                 create_input = CreateQuestionInput(
@@ -324,7 +369,7 @@ class AIGeneratorService:
                     difficulty_level=q_data["difficulty_level"],
                     explanation_text=q_data["explanation_text"],
                     marks=1.0,
-                    external_ref=f"dynamic-ai-{level_name.lower()}-{stem_hash}{ref_suffix}",
+                    external_ref=ext_ref,
                     is_active=True,
                     attempt_id=attempt_id
                 )
@@ -341,7 +386,7 @@ class AIGeneratorService:
             "logs": ["Loaded dynamic randomized English syllabus templates successfully."]
         }
 
-    def _generate_via_openai(
+    def _generate_via_api(
         self,
         exam_id: str,
         section_id: str,
@@ -349,11 +394,16 @@ class AIGeneratorService:
         count: int,
         attempt_id: Optional[str] = None
     ) -> Dict[str, Any]:
-        """Queries OpenAI API, runs solver validations, and commits questions."""
+        """Queries the configured API provider in batches of 10 to commit questions."""
+        import sys
+        
+        batch_size = 10
+        total_requested = count
+        
         logs = []
         issues = []
         imported_count = 0
-
+        
         # Build prompt for specific levels using high-quality benchmarks
         system_prompt = (
             "You are an expert English language assessment developer. You specialize in generating "
@@ -383,93 +433,123 @@ class AIGeneratorService:
             "- Ground the grammar/vocab constraints on the level specified by the user."
         )
 
-        user_content = (
-            f"Generate {count} unique multiple-choice questions for the '{level_name}' English proficiency level. "
-            f"Ensure a mix of Grammar, Vocabulary, and Reading categories modeled after Oxford, Cambridge, and British Council standards."
-        )
-
-        payload = {
-            "model": "gpt-4o-mini",
-            "response_format": {"type": "json_object"},
-            "messages": [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_content}
-            ],
-            "temperature": 0.7
-        }
-
-        try:
-            req = urllib.request.Request(
-                "https://api.openai.com/v1/chat/completions",
-                data=json.dumps(payload).encode("utf-8"),
-                headers={
-                    "Content-Type": "application/json",
-                    "Authorization": f"Bearer {self._api_key}"
-                },
-                method="POST"
-            )
+        num_batches = (total_requested + batch_size - 1) // batch_size
+        
+        for b in range(num_batches):
+            batch_count = min(batch_size, total_requested - (b * batch_size))
+            logs.append(f"Starting API generation batch {b+1}/{num_batches} for {batch_count} questions...")
             
-            with urllib.request.urlopen(req, timeout=30) as res:
-                response_data = json.loads(res.read().decode("utf-8"))
-                
-            raw_content = response_data["choices"][0]["message"]["content"]
-            parsed = json.loads(raw_content)
-            generated_questions = parsed.get("questions", [])
-            logs.append(f"Successfully generated {len(generated_questions)} questions from OpenAI API.")
+            user_content = (
+                f"Generate {batch_count} unique multiple-choice questions for the '{level_name}' English proficiency level. "
+                f"Ensure a mix of Grammar, Vocabulary, and Reading categories modeled after Oxford, Cambridge, and British Council standards."
+            )
 
-            # Validate each question using a SOLVER agent
-            for idx, q_data in enumerate(generated_questions):
-                if not self._validate_structure(q_data):
-                    issues.append(f"Question #{idx} failed programmatic JSON structure validation.")
-                    continue
-                
-                # Solver Agent Check (Self-Solving simulation)
-                if not self._run_solver_check(q_data):
-                    issues.append(f"Question #{idx} failed Solver Agent verification (ambiguous correct answer). Discarded.")
-                    continue
-                
-                # Persist verified question
-                try:
-                    options_input = [
-                        QuestionOptionInput(key=k, text=v, is_correct=(k == q_data["correct_option"]))
-                        for k, v in q_data["options"].items()
-                    ]
-                    # Compute a deterministic hash of the stem for duplicate prevention
-                    stem_hash = uuid.uuid5(uuid.NAMESPACE_DNS, q_data["stem_text"]).hex[:8]
-                    
-                    # Compute a unique external_ref for this attempt if attempt_id is provided
-                    ref_suffix = f"-{attempt_id[:8]}" if attempt_id else ""
-                    
-                    create_input = CreateQuestionInput(
-                        exam_id=exam_id,
-                        section_id=section_id,
-                        stem_text=q_data["stem_text"],
-                        options=options_input,
-                        category_name=q_data["category_name"],
-                        difficulty_level=int(q_data["difficulty_level"]),
-                        explanation_text=q_data["explanation_text"],
-                        marks=1.0,
-                        external_ref=f"openai-ai-{level_name.lower()}-{stem_hash}{ref_suffix}",
-                        is_active=True,
-                        attempt_id=attempt_id
-                    )
-                    self._qb_service.add_question(create_input)
-                    imported_count += 1
-                except Exception as e:
-                    issues.append(f"Failed to persist verified question #{idx}: {str(e)}")
+            payload = {
+                "model": self._model,
+                "response_format": {"type": "json_object"},
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_content}
+                ],
+                "temperature": 0.7
+            }
 
-        except Exception as e:
-            logs.append(f"OpenAI API call failed: {str(e)}")
-            issues.append(f"API Connection error: {str(e)}. Falling back to local static templates...")
-            # Fall back to offline seeding
+            try:
+                req = urllib.request.Request(
+                    self._api_url,
+                    data=json.dumps(payload).encode("utf-8"),
+                    headers={
+                        "Content-Type": "application/json",
+                        "Authorization": f"Bearer {self._api_key}"
+                    },
+                    method="POST"
+                )
+                
+                with urllib.request.urlopen(req, timeout=45) as res:
+                    response_data = json.loads(res.read().decode("utf-8"))
+                    
+                raw_content = response_data["choices"][0]["message"]["content"]
+                parsed = json.loads(raw_content)
+                generated_questions = parsed.get("questions", [])
+                logs.append(f"Batch {b+1}/{num_batches}: Successfully generated {len(generated_questions)} questions from API.")
+
+                # Validate each question using a SOLVER agent
+                for idx, q_data in enumerate(generated_questions):
+                    # Normalize options keys and correct_option to uppercase
+                    try:
+                        if isinstance(q_data.get("options"), dict):
+                            q_data["options"] = {str(k).strip().upper(): v for k, v in q_data["options"].items()}
+                        if isinstance(q_data.get("correct_option"), str):
+                            q_data["correct_option"] = q_data["correct_option"].strip().upper()
+                    except Exception:
+                        pass
+
+                    if not self._validate_structure(q_data):
+                        issues.append(f"Batch {b+1} Q#{idx} failed programmatic JSON structure validation.")
+                        continue
+                    
+                    # Solver Agent Check (Self-Solving simulation)
+                    if not self._run_solver_check(q_data):
+                        issues.append(f"Batch {b+1} Q#{idx} failed Solver Agent verification (ambiguous correct answer). Discarded.")
+                        continue
+                    
+                    # Persist verified question
+                    try:
+                        options_input = [
+                            QuestionOptionInput(key=k, text=v, is_correct=(k == q_data["correct_option"]))
+                            for k, v in q_data["options"].items()
+                        ]
+                        # Compute a deterministic hash of the stem for duplicate prevention
+                        stem_hash = uuid.uuid5(uuid.NAMESPACE_DNS, q_data["stem_text"]).hex[:8]
+                        
+                        # Compute a unique external_ref for this attempt if attempt_id is provided
+                        ref_suffix = f"-{attempt_id[:8]}" if attempt_id else ""
+                        ext_ref = f"openai-ai-{level_name.lower()}-{stem_hash}{ref_suffix}"
+                        
+                        # Prevent IntegrityError by skipping existing questions in the base pool
+                        from sqlalchemy import select
+                        existing_q = self._db.scalar(
+                            select(Question).where(
+                                Question.exam_id == uuid.UUID(exam_id),
+                                Question.external_ref == ext_ref
+                            )
+                        )
+                        if existing_q is not None:
+                            continue
+                        
+                        create_input = CreateQuestionInput(
+                            exam_id=exam_id,
+                            section_id=section_id,
+                            stem_text=q_data["stem_text"],
+                            options=options_input,
+                            category_name=q_data["category_name"],
+                            difficulty_level=int(q_data["difficulty_level"]),
+                            explanation_text=q_data["explanation_text"],
+                            marks=1.0,
+                            external_ref=ext_ref,
+                            is_active=True,
+                            attempt_id=attempt_id
+                        )
+                        self._qb_service.add_question(create_input)
+                        imported_count += 1
+                    except Exception as e:
+                        issues.append(f"Batch {b+1} Q#{idx} failed to persist verified question: {str(e)}")
+
+            except Exception as e:
+                logs.append(f"Batch {b+1}/{num_batches} API call failed: {str(e)}")
+                issues.append(f"Batch {b+1}/{num_batches} API Connection error: {str(e)}.")
+                
+        # If API failed completely (no questions imported), fall back to templates
+        if imported_count == 0:
+            logs.append("No questions successfully generated/imported from API. Falling back to local offline templates...")
             fallback_res = self._generate_fallback(exam_id, section_id, level_name, count, attempt_id)
             imported_count = fallback_res["imported_count"]
             issues.extend(fallback_res["issues"])
             logs.extend(fallback_res["logs"])
 
         return {
-            "mode": "openai_api",
-            "success": len(issues) == 0,
+            "mode": self._provider,
+            "success": imported_count > 0,
             "imported_count": imported_count,
             "issues": issues,
             "logs": logs
@@ -490,33 +570,34 @@ class AIGeneratorService:
 
     def _run_solver_check(self, q: Dict[str, Any]) -> bool:
         """
-        Solver Agent validation layer. Prompts OpenAI to solve the MCQ blind.
+        Solver Agent validation layer. Prompts the AI to solve the MCQ blind.
         If the solver's key matches the correct_option, return True (verified).
         """
-        solver_prompt = (
-            "You are a student taking an English proficiency exam. "
-            "Solve the multiple choice question below. Reply in strict JSON format: {'correct_option': 'KEY'}\n\n"
-            f"Question: {q['stem_text']}\n"
-            f"Options:\n"
-            f"A: {q['options']['A']}\n"
-            f"B: {q['options']['B']}\n"
-            f"C: {q['options']['C']}\n"
-            f"D: {q['options']['D']}\n\n"
-            "Analyze carefully and provide only the key (A, B, C, or D)."
-        )
-
-        payload = {
-            "model": "gpt-4o-mini",
-            "response_format": {"type": "json_object"},
-            "messages": [
-                {"role": "user", "content": solver_prompt}
-            ],
-            "temperature": 0.0
-        }
-
         try:
+            options_dict = q.get("options") or {}
+            solver_prompt = (
+                "You are a student taking an English proficiency exam. "
+                "Solve the multiple choice question below. Reply in strict JSON format: {'correct_option': 'KEY'}\n\n"
+                f"Question: {q.get('stem_text', '')}\n"
+                f"Options:\n"
+                f"A: {options_dict.get('A', '')}\n"
+                f"B: {options_dict.get('B', '')}\n"
+                f"C: {options_dict.get('C', '')}\n"
+                f"D: {options_dict.get('D', '')}\n\n"
+                "Analyze carefully and provide only the key (A, B, C, or D)."
+            )
+
+            payload = {
+                "model": self._model,
+                "response_format": {"type": "json_object"},
+                "messages": [
+                    {"role": "user", "content": solver_prompt}
+                ],
+                "temperature": 0.0
+            }
+
             req = urllib.request.Request(
-                "https://api.openai.com/v1/chat/completions",
+                self._api_url,
                 data=json.dumps(payload).encode("utf-8"),
                 headers={
                     "Content-Type": "application/json",
@@ -531,8 +612,8 @@ class AIGeneratorService:
             solved = json.loads(raw_content)
             solved_key = solved.get("correct_option", "").strip().upper()
             
-            return solved_key == q["correct_option"].strip().upper()
+            correct_opt = q.get("correct_option") or ""
+            return solved_key == correct_opt.strip().upper()
         except Exception:
-            # If solver fails for connection reasons, we default to True to avoid discarding,
-            # but log warning.
+            # If solver fails for connection reasons, we default to True to avoid discarding
             return True

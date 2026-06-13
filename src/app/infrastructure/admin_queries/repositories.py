@@ -28,9 +28,14 @@ class AdminQueryRepository:
         )
 
     def list_exam_options(self) -> list[LookupItem]:
-        stmt = select(Exam.id, Exam.title, Exam.code).order_by(Exam.title.asc())
+        q_sub = (
+            select(func.count(Question.id))
+            .where(Question.exam_id == Exam.id, Question.attempt_id.is_(None))
+            .scalar_subquery()
+        )
+        stmt = select(Exam.id, Exam.title, Exam.code, q_sub.label("q_count")).order_by(Exam.title.asc())
         return [
-            LookupItem(id=str(row.id), label=f"{row.title} ({row.code})")
+            LookupItem(id=str(row.id), label=f"{row.title} ({row.code})", questions_count=int(row.q_count or 0))
             for row in self._session.execute(stmt)
         ]
 

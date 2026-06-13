@@ -9,7 +9,7 @@ const getInspiringWord = (pct) => {
   if (pct >= 90) return { title: "Outstanding! 🌟", text: "You have mastered this level with exceptional performance." };
   if (pct >= 80) return { title: "Excellent! 👏", text: "Fantastic result! You have a very strong grasp of the material." };
   if (pct >= 60) return { title: "Good Job! 👍", text: "Well done! You've successfully demonstrated your proficiency." };
-  if (pct >= 33) return { title: "Passed! ✔", text: "You've met the requirements. Keep up the effort to improve further." };
+  if (pct >= 40) return { title: "Passed! ✔", text: "You've met the requirements. Keep up the effort to improve further." };
   return { title: "Keep Trying! 💪", text: "Don't give up! Consistent practice will help you improve and pass next time." };
 };
 
@@ -326,6 +326,11 @@ function App() {
       setImportPreview(null);
       setImportSuccessMsg('');
     }
+    if (tab === 'ai_hub') {
+      loadLookups();
+      setSelectedExamId('');
+      setAiLogs([]);
+    }
     if (tab === 'reports') loadReports();
   };
 
@@ -568,6 +573,7 @@ function App() {
         `[FINISH] Batch ingestion sequence complete.`
       ]);
       loadAdminDashboard();
+      loadLookups();
     } catch (err) {
       setAiLogs(prev => [...prev, `[ERROR] Fail: ${err.message}`]);
     } finally {
@@ -756,6 +762,9 @@ function App() {
             </button>
             <button className={`nav-item ${adminTab === 'questions' ? 'active' : ''}`} onClick={() => handleAdminTabChange('questions')}>
               Question Bank
+            </button>
+            <button className={`nav-item ${adminTab === 'ai_hub' ? 'active' : ''}`} onClick={() => handleAdminTabChange('ai_hub')}>
+              ⚡ AI Generation Hub
             </button>
             <button className={`nav-item ${adminTab === 'import' ? 'active' : ''}`} onClick={() => handleAdminTabChange('import')}>
               DOCX Import Wizard
@@ -1491,6 +1500,107 @@ function App() {
             </div>
           )}
 
+          {adminTab === 'ai_hub' && (
+            <div>
+              <div className="screen-header">
+                <div>
+                  <h2>AI Question Generator Hub</h2>
+                  <p>Generate high-quality, CEFR-aligned questions directly into the persistent base pool using your Gemini key</p>
+                </div>
+              </div>
+
+              <div className="card" style={{ maxWidth: '600px' }}>
+                <form onSubmit={handleAIGenerate}>
+                  <div className="form-group">
+                    <label>Select Target Exam Level</label>
+                    <select
+                      className="form-control"
+                      value={selectedExamId}
+                      onChange={(e) => {
+                        setSelectedExamId(e.target.value);
+                        const selected = examLookup.find(item => item.id === e.target.value);
+                        if (selected) {
+                          const level = selected.label.split(" ")[0];
+                          setAiGenLevel(level);
+                        }
+                      }}
+                      required
+                    >
+                      <option value="">-- Choose Exam --</option>
+                      {examLookup.map((e) => (
+                        <option key={e.id} value={e.id}>{e.label}</option>
+                      ))}
+                    </select>
+                    {selectedExamId && (() => {
+                      const selected = examLookup.find(item => item.id === selectedExamId);
+                      if (selected && selected.questions_count !== undefined) {
+                        return (
+                          <div style={{ marginTop: '8px', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
+                            Current questions in database base pool: <strong>{selected.questions_count}</strong>
+                          </div>
+                        );
+                      }
+                      return null;
+                    })()}
+                  </div>
+
+                  <div className="form-row" style={{ marginTop: '16px' }}>
+                    <div className="form-group">
+                      <label>AI Level Prompt</label>
+                      <select
+                        className="form-control"
+                        value={aiGenLevel}
+                        onChange={(e) => setAiGenLevel(e.target.value)}
+                      >
+                        <option value="Starter">Starter</option>
+                        <option value="Elementary">Elementary</option>
+                        <option value="Pre-Intermediate">Pre-Intermediate</option>
+                        <option value="Intermediate">Intermediate</option>
+                        <option value="Upper-Intermediate">Upper-Intermediate</option>
+                        <option value="Advanced">Advanced</option>
+                      </select>
+                    </div>
+
+                    <div className="form-group">
+                      <label>Questions Count</label>
+                      <input
+                        className="form-control"
+                        type="number"
+                        min="1"
+                        max="100"
+                        value={aiGenCount}
+                        onChange={(e) => setAiGenCount(parseInt(e.target.value) || 5)}
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <button
+                    type="submit"
+                    className="btn btn-primary"
+                    style={{ marginTop: '24px', width: '100%', padding: '12px' }}
+                    disabled={aiLoading}
+                  >
+                    {aiLoading ? 'Generating Questions in Batches of 10...' : '⚡ Generate Base Questions'}
+                  </button>
+                </form>
+              </div>
+
+              {aiLogs.length > 0 && (
+                <div className="card" style={{ marginTop: '24px' }}>
+                  <h3>API Generation Logs & Validation Reports</h3>
+                  <div className="issues-log" style={{ marginTop: '12px', maxHeight: '350px', overflowY: 'auto', fontFamily: 'monospace', fontSize: '0.85rem', padding: '16px', background: 'var(--bg-app)' }}>
+                    {aiLogs.map((log, idx) => (
+                      <div key={idx} style={{ padding: '6px 0', borderBottom: '1px solid var(--border)', color: log.startsWith('[ERROR]') ? 'var(--danger)' : log.startsWith('[WARNING]') ? 'var(--warning)' : 'var(--text-secondary)' }}>
+                        {log}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           {adminTab === 'reports' && (
             <div>
               <div className="screen-header">
@@ -1931,8 +2041,8 @@ function App() {
         {studentTab === 'result' && examScorecard && (
           <div className="card" style={{ maxWidth: '640px', margin: '0 auto' }}>
             <div className="result-container">
-              <div className={`result-badge ${examScorecard.percentage >= 33.0 ? 'passed' : 'failed'}`}>
-                {examScorecard.percentage >= 33.0 ? 'PASSED' : 'FAILED'}
+              <div className={`result-badge ${examScorecard.percentage >= 40.0 ? 'passed' : 'failed'}`}>
+                {examScorecard.percentage >= 40.0 ? 'PASSED' : 'FAILED'}
               </div>
 
               <h2 style={{ fontSize: '1.8rem', marginBottom: '8px' }}>Test Result Summary</h2>

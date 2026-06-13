@@ -45,6 +45,7 @@ class ReportingRepository:
         unanswered_questions = max(total_questions - answered_questions, 0)
         score = float(sum(float(item.awarded_marks) for item in answers))
         percentage = (score / total_questions) * 100 if total_questions else 0.0
+        passing_score = float(attempt.exam.settings.passing_score) if (attempt.exam and attempt.exam.settings) else 40.0
         return StudentResultView(
             attempt_id=str(attempt.id),
             student_id=str(attempt.student.id),
@@ -61,7 +62,7 @@ class ReportingRepository:
             unanswered_questions=unanswered_questions,
             score=score,
             percentage=percentage,
-            status="passed" if percentage >= 33.0 else "failed" if attempt.status.value == "completed" else attempt.status.value,
+            status="passed" if percentage >= passing_score else "failed" if attempt.status.value == "completed" else attempt.status.value,
         )
 
     def _to_exam_summary(self, exam: Exam) -> ExamSummaryView:
